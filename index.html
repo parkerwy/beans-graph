@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+        <style>
+            .links line {
+                stroke: #999;
+                stroke-opacity: 0.6;
+            }
+
+            .nodes circle {
+                stroke: #fff;
+                stroke-width: 1.5px;
+            }
+
+        </style>
+        <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+        <script src="https://d3js.org/d3.v4.min.js"></script>
+    </head>
+    <body class="container-fluid">
+        <h3 class="text-center">Spring Boot Beans Dependencies</h3>
+        <!--Chart Placement-->
+        <div class="col-md-8">
+            <svg width="640" height="480"></svg>
+        </div>
+        <form class="col-md-4">
+            <div class="row">
+                <h4>Paste /beans.json here</h4>
+            </div>
+            <div class="row">
+                <textarea id="beans" style="width:100%;" rows="25"></textarea>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-primary" onclick="parse();">Render</button>
+                <button type="button" class="btn" onclick="clear();">Clear</button>
+            </div>
+        </form>
+        <script>
+            var svg = d3.select("svg"),
+                width = +svg.attr("width"),
+                height = +svg.attr("height");
+
+            var color = d3.scaleOrdinal(d3.schemeCategory20);
+
+            var simulation = d3.forceSimulation().force("link", d3.forceLink().id(function(d) {
+                return d.id;
+            })).force("charge", d3.forceManyBody()).force("center", d3.forceCenter(width / 2, height / 2));
+
+            function render(graph) {
+
+                var link = svg.append("g").attr("class", "links").selectAll("line").data(graph.links).enter().append("line").attr("stroke-width", function(d) {
+                    return Math.sqrt(d.value);
+                });
+
+                var node = svg.append("g").attr("class", "nodes").selectAll("circle").data(graph.nodes).enter().append("circle").attr("r", 5).attr("fill", function(d) {
+                    return color(d.group);
+                }).call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
+
+                node.append("title").text(function(d) {
+                    return d.id;
+                });
+
+                simulation.nodes(graph.nodes).on("tick", ticked);
+
+                simulation.force("link").links(graph.links);
+
+                function ticked() {
+                    link.attr("x1", function(d) {
+                        return d.source.x;
+                    }).attr("y1", function(d) {
+                        return d.source.y;
+                    }).attr("x2", function(d) {
+                        return d.target.x;
+                    }).attr("y2", function(d) {
+                        return d.target.y;
+                    });
+
+                    node.attr("cx", function(d) {
+                        return d.x;
+                    }).attr("cy", function(d) {
+                        return d.y;
+                    });
+                }
+            }
+
+            function dragstarted(d) {
+                if (!d3.event.active)
+                    simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(d) {
+                d.fx = d3.event.x;
+                d.fy = d3.event.y;
+            }
+
+            function dragended(d) {
+                if (!d3.event.active)
+                    simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            function parse() {
+                var beans = jQuery.parseJSON($('#beans').val())[0].beans;
+
+                beans.sort(function(x, y) {
+                    if (x.type < y.type)
+                        return -1;
+                    if (x.type > y.type)
+                        return 1;
+                    return 0;
+                });
+
+                var series = {};
+                series.nodes = new Array();
+                series.links = new Array();
+
+                beanmap = {};
+
+                $.each(beans, function(i, from) {
+                    var group = 0;
+                    if (from.type.startsWith("lab")) {
+                        group = 10;
+                    } else if (from.type.startsWith("org.springframework.boot")) {
+                        group = 20;
+                    } else if (from.type.startsWith("org.springframework")) {
+                        group = 30;
+                    }
+
+                    var node = {
+                        "id": from.bean,
+                        "group": group
+                    };
+                    series.nodes.push(node);
+                    beanmap[from.bean] = node;
+                });
+
+                $.each(beans, function(i, from) {
+                    $.each(from.dependencies, function(j, dep) {
+                        if (beanmap[dep]) {
+                            var link = {
+                                "source": from.bean,
+                                "target": dep,
+                                "value": 2
+                            };
+                            series.links.push(link);
+                        }
+                    });
+                });
+
+                console.dir(series);
+                svg.selectAll("*").remove();
+                render(series);
+            }
+
+            function clear() {
+                svg.selectAll("*").remove();
+                $('#beans').val("");
+            }
+        </script>
+    </body>
+</html>
